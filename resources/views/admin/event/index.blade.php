@@ -67,6 +67,11 @@
                         <div class="col-md-6">
                             <label class="form-label">Tanggal</label>
                             <input type="date" name="tanggal" class="form-control" required>
+
+
+                            #adalah
+
+
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Status</label>
