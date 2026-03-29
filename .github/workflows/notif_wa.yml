@@ -14,3 +14,4 @@ jobs:
           -H "Authorization: ${{ secrets.FONNTE_TOKEN }}" \
           -d "target=${{ secrets.WA_GROUP_ID }}" \
           -d "message=📢 *UPDATE PBL SMART ATTENDANCE* 📢%n%nHalo Tim! Raihan baru saja melakukan update kodingan.%n%n📝 *Pesan:* ${{ github.event.head_commit.message }}%n%n📅 Waktu: $(date)"
+
