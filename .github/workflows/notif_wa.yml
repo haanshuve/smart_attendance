@@ -15,3 +15,4 @@ jobs:
           -d "target=${{ secrets.WA_GROUP_ID }}" \
           -d "message=📢 *UPDATE PBL SMART ATTENDANCE* 📢%n%nHalo Tim! Raihan baru saja memperbarui kodingan.%n%n📝 *Pesan:* ${{ github.event.head_commit.message }}%n🌐 *Link:* ${{ github.event.head_commit.url }}%n%n📅 Waktu: $(date)"
 
+
