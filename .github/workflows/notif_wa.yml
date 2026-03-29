@@ -1,12 +1,17 @@
-name: WhatsApp PBL Notification
-on: [push]
+name: WhatsApp Group Notification
+
+on:
+  push:
+    branches: [ main, master ]
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send WhatsApp Message
+      - name: Send Group Message
         run: |
-          # Ganti NOMOR_HP dengan nomor kamu (contoh: 62812345678)
-          # Ganti API_KEY_KAMU dengan kode yang nanti dikirim bot
-          curl -X GET "https://api.callmebot.com/whatsapp.php?phone=NOMOR_HP&text=🚀+*UPDATE+CODINGAN+PBL*%0A%0A👤+Oleh:+${{ github.actor }}%0A📝+Pesan:+${{ github.event.head_commit.message }}%0A🔗+Link:+${{ github.event.head_commit.url }}&apikey=API_KEY_KAMU"
+          curl -X POST 'https://api.fonnte.com/send' \
+          -H "Authorization: ${{ secrets.FONNTE_TOKEN }}" \
+          -d "target=${{ secrets.WA_GROUP_ID }}" \
+          -d "message=📢 *UPDATE PBL SMART ATTENDANCE* 📢%n%nHalo Tim! Raihan baru saja memperbarui kodingan.%n%n📝 *Pesan:* ${{ github.event.head_commit.message }}%n🌐 *Link:* ${{ github.event.head_commit.url }}%n%n📅 Waktu: $(date)"
+
