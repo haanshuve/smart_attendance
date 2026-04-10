@@ -6,15 +6,19 @@ use Illuminate\Http\Request;
 use App\Models\Attendance;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB; // Ditambahkan untuk query tabel events
+use Illuminate\Support\Facades\DB;
 
 class AttendanceController extends Controller
 {
-    // --- 1. DASHBOARD & MONITORING ---
-
+    // ===============================
+    // 1. DASHBOARD
+    // ===============================
     public function index()
     {
-        $logs = Attendance::with('user')->orderBy('waktu_hadir', 'desc')->take(10)->get();
+        $logs = Attendance::with('user')
+            ->orderBy('waktu_hadir', 'desc')
+            ->take(10)
+            ->get();
 
         $stats = [
             'total'   => Attendance::count(),
@@ -32,47 +36,101 @@ class AttendanceController extends Controller
         return redirect('/')->with('success', 'Data log berhasil dikosongkan!');
     }
 
-
-    // --- 2. API UNTUK IOT (ESP32 / QR SCANNER) ---
-
+    // ===============================
+    // 2. API SCAN (ESP32 / QR)
+    // ===============================
     public function scan(Request $request)
     {
         $id_input = $request->query('uid') ?? $request->query('qr');
         $metode = $request->has('uid') ? 'rfid' : 'qr';
 
         if (!$id_input) {
-            return response()->json(['status' => 'error', 'message' => 'ID tidak ditemukan'], 400);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'ID tidak ditemukan'
+            ], 400);
         }
 
+        // 🔍 CARI USER
         $user = User::where('rfid_uid', $id_input)
                     ->orWhere('qr_data', $id_input)
                     ->first();
 
-        if ($user) {
-            Attendance::create([
-                'id_user' => $user->id_user,
-                'id_event' => 1, // Default ke event pertama, bisa dikembangkan nanti
-                'metode_input' => $metode,
-                'status_verifikasi' => 'pending',
-                'waktu_hadir' => now()
-            ]);
-
+        if (!$user) {
             return response()->json([
-                'status' => 'success',
-                'nama' => $user->nama_lengkap,
-                'metode' => $metode
-            ]);
+                'status' => 'error',
+                'message' => 'User tidak terdaftar'
+            ], 404);
         }
 
-        return response()->json(['status' => 'error', 'message' => 'User tidak terdaftar'], 404);
+        // 🔥 AMBIL EVENT AKTIF
+        $event = DB::table('events')->where('is_active', 1)->first();
+
+        if (!$event) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Tidak ada event aktif'
+            ], 400);
+        }
+
+        // 🔥 CEK APAKAH USER TERDAFTAR DI EVENT
+        $invitation = DB::table('invitations')
+            ->where('user_id', $user->id_user)
+            ->where('event_id', $event->id_event)
+            ->first();
+
+        if (!$invitation) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Tidak terdaftar di event'
+            ], 403);
+        }
+
+        // 🔥 CEK DOUBLE SCAN
+        $already = Attendance::where('id_user', $user->id_user)
+            ->where('id_event', $event->id_event)
+            ->exists();
+
+        if ($already) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Sudah melakukan absensi'
+            ], 409);
+        }
+
+        // 🔥 INSERT ATTENDANCE
+        Attendance::create([
+            'id_user' => $user->id_user,
+            'id_event' => $event->id_event,
+            'metode_input' => $metode,
+            'status_verifikasi' => 'verified',
+            'waktu_hadir' => now()
+        ]);
+
+        // 🔥 UPDATE STATUS INVITATION
+        DB::table('invitations')
+            ->where('id', $invitation->id)
+            ->update([
+                'status' => 'hadir'
+            ]);
+
+        return response()->json([
+            'status' => 'success',
+            'nama' => $user->nama_lengkap,
+            'event' => $event->nama_event,
+            'metode' => $metode
+        ]);
     }
 
-
-    // --- 3. FITUR FR-02: MANAJEMEN DATA PESERTA ---
-
+    // ===============================
+    // 3. MANAJEMEN PESERTA
+    // ===============================
     public function pesertaIndex()
     {
-        $users = User::where('role', 'peserta')->orderBy('id_user', 'desc')->get();
+        $users = User::where('role', 'peserta')
+            ->orderBy('id_user', 'desc')
+            ->get();
+
         return view('admin.peserta.index', compact('users'));
     }
 
@@ -94,46 +152,95 @@ class AttendanceController extends Controller
             'is_active'    => 1
         ]);
 
-        return redirect()->route('peserta.index')->with('success', 'Peserta berhasil ditambahkan!');
+        return redirect()->route('peserta.index')
+            ->with('success', 'Peserta berhasil ditambahkan!');
     }
 
     public function pesertaDestroy($id)
     {
         $user = User::findOrFail($id);
         $user->delete();
+
         return back()->with('success', 'Peserta berhasil dihapus!');
     }
 
-
-    // --- 4. FITUR FR-03: MANAJEMEN ACARA (Disesuaikan image_e291c7.jpg) ---
-
+    // ===============================
+    // 4. MANAJEMEN EVENT
+    // ===============================
     public function eventIndex()
     {
-        // Mengambil semua data dari tabel events
-        $events = DB::table('events')->orderBy('id_event', 'desc')->get();
+        $events = DB::table('events')
+            ->orderBy('id_event', 'desc')
+            ->get();
+
         return view('admin.event.index', compact('events'));
     }
 
     public function eventStore(Request $request)
+{
+    $request->validate([
+        'nama_event'   => 'required',
+        'tanggal'      => 'required|date',
+        'lokasi'       => 'required',
+        'status_event' => 'required'
+    ]);
+
+    DB::table('events')->insert([
+        'nama_event'   => $request->nama_event,
+        'tanggal'      => $request->tanggal,
+        'lokasi'       => $request->lokasi,
+        'deskripsi'    => $request->deskripsi,
+        'status_event' => $request->status_event,
+        'is_active'    => 0
+    ]);
+
+    return redirect()->route('event.index')
+        ->with('success', 'Acara berhasil dibuat!');
+}
+
+    // ===============================
+    // 5. HALAMAN PESERTA EVENT
+    // ===============================
+    public function eventPeserta($id)
     {
-        // Validasi sesuai kolom di database kamu
+        $event = DB::table('events')->where('id_event', $id)->first();
+
+        $participants = DB::table('invitations')
+            ->join('users', 'users.id_user', '=', 'invitations.user_id')
+            ->where('invitations.event_id', $id)
+            ->select(
+                'users.nama_lengkap',
+                'users.email',
+                'invitations.method',
+                'invitations.status'
+            )
+            ->get();
+
+        $users = User::where('role', 'peserta')->get();
+
+        return view('admin.event.peserta', compact('event', 'participants', 'users'));
+    }
+
+    // ===============================
+    // 6. TAMBAH PESERTA KE EVENT
+    // ===============================
+    public function eventTambahPeserta(Request $request)
+    {
         $request->validate([
-            'nama_event'   => 'required',
-            'tanggal'      => 'required|date',
-            'lokasi'       => 'required',
-            'status_event' => 'required'
+            'user_id' => 'required',
+            'event_id' => 'required',
+            'method' => 'required|in:rfid,qr'
         ]);
 
-        DB::table('events')->insert([
-            'nama_event'   => $request->nama_event,
-            'tanggal'      => $request->tanggal,
-            'lokasi'       => $request->lokasi,
-            'deskripsi'    => $request->deskripsi,
-            'status_event' => $request->status_event,
-            'created_at'   => now(),
-            'updated_at'   => now()
+        DB::table('invitations')->insert([
+            'user_id' => $request->user_id,
+            'event_id' => $request->event_id,
+            'method' => $request->input('method'),
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now()
         ]);
 
-        return redirect()->route('event.index')->with('success', 'Acara berhasil dibuat!');
+        return back()->with('success', 'Peserta berhasil ditambahkan ke event!');
     }
 }
