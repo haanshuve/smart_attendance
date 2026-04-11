@@ -37,43 +37,44 @@ class AttendanceController extends Controller
     }
 
     // ===============================
-    // 2. API SCAN (ESP32 / QR)
+    // 2. API SCAN (FIXED 🔥)
     // ===============================
     public function scan(Request $request)
     {
-        $id_input = $request->query('uid') ?? $request->query('qr');
-        $metode = $request->has('uid') ? 'rfid' : 'qr';
+        $qr = $request->query('qr');
 
-        if (!$id_input) {
+        if (!$qr) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'ID tidak ditemukan'
-            ], 400);
+                'message' => 'QR kosong'
+            ]);
         }
 
-        // 🔍 CARI USER
-        $user = User::where('rfid_uid', $id_input)
-                    ->orWhere('qr_data', $id_input)
-                    ->first();
+        // 🔎 cari user dari QR
+        $user = DB::table('users')
+            ->where('qr_data', $qr)
+            ->first();
 
         if (!$user) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'User tidak terdaftar'
-            ], 404);
+            ]);
         }
 
-        // 🔥 AMBIL EVENT AKTIF
-        $event = DB::table('events')->where('is_active', 1)->first();
+        // 🔥 ambil event aktif
+        $event = DB::table('events')
+            ->where('is_active', 1)
+            ->first();
 
         if (!$event) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Tidak ada event aktif'
-            ], 400);
+            ]);
         }
 
-        // 🔥 CEK APAKAH USER TERDAFTAR DI EVENT
+        // 🔥 cek invitation
         $invitation = DB::table('invitations')
             ->where('user_id', $user->id_user)
             ->where('event_id', $event->id_event)
@@ -83,10 +84,10 @@ class AttendanceController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Tidak terdaftar di event'
-            ], 403);
+            ]);
         }
 
-        // 🔥 CEK DOUBLE SCAN
+        // 🔥 cek double scan
         $already = Attendance::where('id_user', $user->id_user)
             ->where('id_event', $event->id_event)
             ->exists();
@@ -95,19 +96,19 @@ class AttendanceController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Sudah melakukan absensi'
-            ], 409);
+            ]);
         }
 
-        // 🔥 INSERT ATTENDANCE
+        // 🔥 simpan attendance
         Attendance::create([
             'id_user' => $user->id_user,
             'id_event' => $event->id_event,
-            'metode_input' => $metode,
+            'metode_input' => 'qr',
             'status_verifikasi' => 'verified',
             'waktu_hadir' => now()
         ]);
 
-        // 🔥 UPDATE STATUS INVITATION
+        // 🔥 update invitation
         DB::table('invitations')
             ->where('id', $invitation->id)
             ->update([
@@ -116,14 +117,12 @@ class AttendanceController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'nama' => $user->nama_lengkap,
-            'event' => $event->nama_event,
-            'metode' => $metode
+            'message' => 'Absensi berhasil: ' . $user->nama_lengkap
         ]);
     }
 
     // ===============================
-    // 3. MANAJEMEN PESERTA
+    // 3. PESERTA
     // ===============================
     public function pesertaIndex()
     {
@@ -158,14 +157,12 @@ class AttendanceController extends Controller
 
     public function pesertaDestroy($id)
     {
-        $user = User::findOrFail($id);
-        $user->delete();
-
+        User::findOrFail($id)->delete();
         return back()->with('success', 'Peserta berhasil dihapus!');
     }
 
     // ===============================
-    // 4. MANAJEMEN EVENT
+    // 4. EVENT
     // ===============================
     public function eventIndex()
     {
@@ -177,96 +174,51 @@ class AttendanceController extends Controller
     }
 
     public function eventStore(Request $request)
-{
-    $request->validate([
-        'nama_event'   => 'required',
-        'tanggal'      => 'required|date',
-        'lokasi'       => 'required',
-        'status_event' => 'required'
-    ]);
-
-    DB::table('events')->insert([
-        'nama_event'   => $request->nama_event,
-        'tanggal'      => $request->tanggal,
-        'lokasi'       => $request->lokasi,
-        'deskripsi'    => $request->deskripsi,
-        'status_event' => $request->status_event,
-        'is_active'    => 0
-    ]);
-
-    return redirect()->route('event.index')
-        ->with('success', 'Acara berhasil dibuat!');
-}
-
-    // ===============================
-    // 5. HALAMAN PESERTA EVENT
-    // ===============================
-    public function eventPeserta($id)
-    {
-        $event = DB::table('events')->where('id_event', $id)->first();
-
-        $participants = DB::table('invitations')
-            ->join('users', 'users.id_user', '=', 'invitations.user_id')
-            ->where('invitations.event_id', $id)
-            ->select(
-                'users.nama_lengkap',
-                'users.email',
-                'invitations.method',
-                'invitations.status'
-            )
-            ->get();
-
-        $users = User::where('role', 'peserta')->get();
-
-        return view('admin.event.peserta', compact('event', 'participants', 'users'));
-    }
-
-    // ===============================
-    // 6. TAMBAH PESERTA KE EVENT
-    // ===============================
-    public function eventTambahPeserta(Request $request)
     {
         $request->validate([
-            'user_id' => 'required',
-            'event_id' => 'required',
-            'method' => 'required|in:rfid,qr'
+            'nama_event'   => 'required',
+            'tanggal'      => 'required|date',
+            'lokasi'       => 'required',
+            'status_event' => 'required'
         ]);
 
-        DB::table('invitations')->insert([
-            'user_id' => $request->user_id,
-            'event_id' => $request->event_id,
-            'method' => $request->input('method'),
-            'status' => 'pending',
-            'created_at' => now(),
-            'updated_at' => now()
+        DB::table('events')->insert([
+            'nama_event'   => $request->nama_event,
+            'tanggal'      => $request->tanggal,
+            'lokasi'       => $request->lokasi,
+            'deskripsi'    => $request->deskripsi,
+            'status_event' => $request->status_event,
+            'is_active'    => 1
         ]);
 
-        return back()->with('success', 'Peserta berhasil ditambahkan ke event!');
+        return redirect()->route('event.index')
+            ->with('success', 'Acara berhasil dibuat!');
     }
 
-public function eventUpdate(Request $request, $id)
-{
-    $request->validate([
-        'nama_event'   => 'required',
-        'tanggal'      => 'required|date',
-        'lokasi'       => 'required',
-        'status_event' => 'required'
-    ]);
-
-    DB::table('events')->where('id_event', $id)->update([
-        'nama_event'   => $request->nama_event,
-        'tanggal'      => $request->tanggal,
-        'lokasi'       => $request->lokasi,
-        'deskripsi'    => $request->deskripsi,
-        'status_event' => $request->status_event,
-    ]);
-
-    return redirect()->route('event.index')->with('success', 'Event berhasil diupdate!');
-}
-
     public function eventEdit($id)
-{
-    $event = DB::table('events')->where('id_event', $id)->first();
-    return view('admin.event.edit', compact('event'));
-}
+    {
+        $event = DB::table('events')->where('id_event', $id)->first();
+        return view('admin.event.edit', compact('event'));
+    }
+
+    public function eventUpdate(Request $request, $id)
+    {
+        DB::table('events')->where('id_event', $id)->update([
+            'nama_event'   => $request->nama_event,
+            'tanggal'      => $request->tanggal,
+            'lokasi'       => $request->lokasi,
+            'deskripsi'    => $request->deskripsi,
+            'status_event' => $request->status_event,
+        ]);
+
+        return redirect()->route('event.index')->with('success', 'Event berhasil diupdate!');
+    }
+
+    // ===============================
+    // 5. SCANNER VIEW
+    // ===============================
+    public function scanner()
+    {
+        return view('scanner');
+    }
 }

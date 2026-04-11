@@ -57,7 +57,10 @@ Route::middleware(['auth'])->group(function () {
     // LOGOUT
     // ---------------------------
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
 });
+
+Route::get('/api/scan', [AttendanceController::class, 'scan']);
 
 
 // ===============================
