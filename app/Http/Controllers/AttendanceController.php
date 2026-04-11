@@ -243,4 +243,30 @@ class AttendanceController extends Controller
 
         return back()->with('success', 'Peserta berhasil ditambahkan ke event!');
     }
+
+public function eventUpdate(Request $request, $id)
+{
+    $request->validate([
+        'nama_event'   => 'required',
+        'tanggal'      => 'required|date',
+        'lokasi'       => 'required',
+        'status_event' => 'required'
+    ]);
+
+    DB::table('events')->where('id_event', $id)->update([
+        'nama_event'   => $request->nama_event,
+        'tanggal'      => $request->tanggal,
+        'lokasi'       => $request->lokasi,
+        'deskripsi'    => $request->deskripsi,
+        'status_event' => $request->status_event,
+    ]);
+
+    return redirect()->route('event.index')->with('success', 'Event berhasil diupdate!');
+}
+
+    public function eventEdit($id)
+{
+    $event = DB::table('events')->where('id_event', $id)->first();
+    return view('admin.event.edit', compact('event'));
+}
 }

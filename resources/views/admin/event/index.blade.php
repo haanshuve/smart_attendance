@@ -71,8 +71,9 @@
                         </a>
 
                         <!-- OPTIONAL -->
-                        <button class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-pencil"></i> Edit
+                       <a href="{{ route('event.edit', $e->id_event) }}" class="btn btn-sm btn-outline-secondary">
+    Edit
+</a>
                         </button>
                     </td>
                 </tr>
