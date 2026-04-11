@@ -63,6 +63,7 @@ Route::middleware(['auth'])->group(function () {
 Route::get('/api/scan', [AttendanceController::class, 'scan']);
 
 
+
 // ===============================
 // 3. TESTING
 // ===============================
